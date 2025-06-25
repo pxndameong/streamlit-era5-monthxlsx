@@ -2,3 +2,7 @@ xarray
 pandas
 netCDF4
 h5netcdf
+streamlit
+os
+zipfile
+io
