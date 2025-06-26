@@ -210,7 +210,7 @@ st.markdown("""
 
 - Aplikasi ini memungkinkan anda mengunggah file **NetCDF (data ERA5)** dengan resolusi bulanan.
 - File yang diunggah akan diproses dan dapat diunduh dalam format **Excel (.xlsx)** per bulan.
-- Aplikasi ini akan **mengisi (interpolasi) nilai yang hilang (NaN)** secara otomatis.
+- <span style="color:teal">Aplikasi ini akan **mengisi (interpolasi) nilai yang hilang (NaN)** secara otomatis.
 - File NetCDF yang digunakan sebaiknya berasal dari situs resmi Copernicus berikut:
   - 🌍 ERA5 Single Levels Monthly Means: https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-monthly-means?tab=download
   - 🌐 ERA5 Pressure Levels Monthly Means: https://cds.climate.copernicus.eu/datasets/reanalysis-era5-pressure-levels-monthly-means?tab=download
@@ -222,9 +222,9 @@ st.markdown("""
 ### Upload File
 
 - Anda dapat mengunggah **lebih dari satu file NetCDF** sekaligus.  
-- **Pastikan semua file memiliki waktu dan lokasi (grid) yang sama**.  
+- <span style="color:teal">**Pastikan semua file memiliki waktu dan lokasi (grid) yang sama**.  
 - Jika berbeda, **harap unggah dan proses secara terpisah** untuk menghindari kesalahan.
-""")
+""", unsafe_allow_html=True)
 
 ## 📥 Unggah File NetCDF
 
@@ -598,4 +598,4 @@ if st.session_state.checked_data_available:
                 imputation_log_placeholder.text_area("Log Imputasi", value="\n".join(imputation_logs), height=300)
 
 st.markdown("---")
-st.markdown("Dibuat dengan ❤️ oleh tsaqib v15")
+st.markdown("Dibuat dengan ❤️ oleh Tsaqib")
