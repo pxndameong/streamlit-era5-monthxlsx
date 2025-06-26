@@ -120,10 +120,11 @@ def _get_sample_df_columns(file_content_buffer, is_pressure_level):
         return None, None, []
 
 @st.cache_data
-def process_netcdf_data(uploaded_file_contents, is_pressure_level, years, selected_columns):
+def process_netcdf_data(uploaded_file_contents, is_pressure_level, start_datetime, end_datetime, selected_columns):
     """
     Processes uploaded NetCDF file contents.
     `uploaded_file_contents` expected to be a list of BytesIO objects.
+    `start_datetime` and `end_datetime` are pandas Timestamps for filtering.
     `selected_columns` are the columns to retain in the final output.
     """
     all_data = []
@@ -138,8 +139,10 @@ def process_netcdf_data(uploaded_file_contents, is_pressure_level, years, select
                     continue
                 
                 ds['valid_time'] = pd.to_datetime(ds['valid_time'].values)
-                # Filter by selected years early to reduce memory usage for large files
-                ds = ds.sel(valid_time=ds['valid_time'].dt.year.isin(years))
+                
+                # Filter by selected date range (month and year)
+                ds = ds.sel(valid_time=slice(start_datetime, end_datetime))
+                
                 ds = ds.drop_vars(["expver", "number"], errors="ignore")
 
                 df = ds.to_dataframe().reset_index()
@@ -253,6 +256,11 @@ if 'start_year_input' not in st.session_state:
     st.session_state.start_year_input = None
 if 'end_year_input' not in st.session_state:
     st.session_state.end_year_input = None
+if 'start_month_input' not in st.session_state: 
+    st.session_state.start_month_input = None
+if 'end_month_input' not in st.session_state:   
+    st.session_state.end_month_input = None
+
 
 all_uploaded_files = uploaded_single_level_files + uploaded_pressure_level_files
 
@@ -292,6 +300,11 @@ if all_uploaded_files:
                 st.session_state.detected_max_month = max_overall_time.month
                 st.session_state.detected_columns = sorted(list(all_detected_cols_set))
                 st.session_state.selected_columns = st.session_state.detected_columns # Pra-pilih semua kolom yang terdeteksi
+                
+                # Set initial values for month inputs based on detected range
+                st.session_state.start_month_input = st.session_state.detected_min_month
+                st.session_state.end_month_input = st.session_state.detected_max_month
+
                 st.session_state.checked_data_available = True
                 st.success("Analisis data awal selesai! Silakan sesuaikan pengaturan dan klik 'Diproses Data'.")
                 st.rerun() # Jalankan ulang untuk menampilkan elemen UI berikutnya segera
@@ -305,57 +318,97 @@ if st.session_state.checked_data_available:
     st.subheader("Informasi Data Terdeteksi dan Pengaturan Pemrosesan")
 
     if st.session_state.detected_min_year and st.session_state.detected_max_year:
-        st.info(f"**Rentang Waktu Terdeteksi:** "
+        st.info(f"**Rentang Waktu Terdeteksi dalam File:** "
                 f"Dari {st.session_state.detected_min_month:02d}/{st.session_state.detected_min_year} "
                 f"hingga {st.session_state.detected_max_month:02d}/{st.session_state.detected_max_year}")
         st.markdown("---")
 
-        st.subheader("Pengaturan Tahun")
-        current_year = pd.Timestamp.now().year
-        
-        # Set nilai awal untuk input angka berdasarkan rentang yang terdeteksi, tetapi izinkan pengguna untuk mengubah
-        st.session_state.start_year_input = st.number_input(
-            "Tahun Mulai", 
-            min_value=1940, 
-            max_value=current_year, 
-            value=st.session_state.detected_min_year if st.session_state.start_year_input is None else st.session_state.start_year_input, 
-            step=1, 
-            key="start_year_selector"
-        )
-        st.session_state.end_year_input = st.number_input(
-            "Tahun Akhir", 
-            min_value=1940, 
-            max_value=current_year, 
-            value=st.session_state.detected_max_year if st.session_state.end_year_input is None else st.session_state.end_year_input, 
-            step=1, 
-            key="end_year_selector"
-        )
+        # Menggunakan st.columns untuk tata letak berdampingan untuk pengaturan dan kolom
+        col_settings, col_columns = st.columns(2)
 
-        if st.session_state.start_year_input > st.session_state.end_year_input:
-            st.error("Tahun mulai tidak boleh lebih besar dari tahun akhir.")
+        with col_settings:
+            st.subheader("Pengaturan Rentang Waktu Kustom")
+            current_year = pd.Timestamp.now().year
             
-        st.markdown("---")
-        st.subheader("Pilih Kolom untuk Disertakan dalam Output")
-        st.session_state.selected_columns = st.multiselect(
-            "Pilih kolom data yang ingin Anda sertakan (selain lintang, bujur, dan waktu):",
-            options=st.session_state.detected_columns,
-            default=st.session_state.selected_columns,
-            key="column_selector"
-        )
+            st.markdown("##### Tanggal Mulai")
+            col_start_month, col_start_year = st.columns(2) # Kolom nested untuk bulan dan tahun mulai
+
+            with col_start_month:
+                st.session_state.start_month_input = st.number_input(
+                    "Bulan",
+                    min_value=1,
+                    max_value=12,
+                    value=st.session_state.detected_min_month if st.session_state.start_month_input is None else st.session_state.start_month_input,
+                    step=1,
+                    key="start_month_selector"
+                )
+            with col_start_year:
+                st.session_state.start_year_input = st.number_input(
+                    "Tahun", 
+                    min_value=1940, 
+                    max_value=current_year, 
+                    value=st.session_state.detected_min_year if st.session_state.start_year_input is None else st.session_state.start_year_input, 
+                    step=1, 
+                    key="start_year_selector"
+                )
+
+            st.markdown("---") # Separator visual
+
+            st.markdown("##### Tanggal Akhir")
+            col_end_month, col_end_year = st.columns(2) # Kolom nested untuk bulan dan tahun akhir
+
+            with col_end_month:
+                st.session_state.end_month_input = st.number_input(
+                    "Bulan",
+                    min_value=1,
+                    max_value=12,
+                    value=st.session_state.detected_max_month if st.session_state.end_month_input is None else st.session_state.end_month_input,
+                    step=1,
+                    key="end_month_selector"
+                )
+            with col_end_year:
+                st.session_state.end_year_input = st.number_input(
+                    "Tahun", 
+                    min_value=1940, 
+                    max_value=current_year, 
+                    value=st.session_state.detected_max_year if st.session_state.end_year_input is None else st.session_state.end_year_input, 
+                    step=1, 
+                    key="end_year_selector"
+                )
+
+            # Validasi rentang waktu
+            start_date_val = pd.Timestamp(year=st.session_state.start_year_input, month=st.session_state.start_month_input, day=1)
+            end_date_val = pd.Timestamp(year=st.session_state.end_year_input, month=st.session_state.end_month_input, day=1)
+            
+            if start_date_val > end_date_val:
+                st.error("Tanggal mulai tidak boleh lebih besar dari tanggal akhir.")
+                
+        with col_columns:
+            st.subheader("Pilih Kolom untuk Disertakan dalam Output")
+            st.session_state.selected_columns = st.multiselect(
+                "Pilih kolom data yang ingin Anda sertakan (selain lintang, bujur, dan waktu):",
+                options=st.session_state.detected_columns,
+                default=st.session_state.selected_columns,
+                key="column_selector"
+            )
 
         st.markdown("---")
         
         # --- Tombol "Diproses Data" ---
         if st.button("Diproses Data", key="process_data_button"):
+            # Re-validate dates before processing
+            start_date_val = pd.Timestamp(year=st.session_state.start_year_input, month=st.session_state.start_month_input, day=1)
+            # Ensure end_date_val represents the last day of the selected end month
+            end_date_val = pd.Timestamp(year=st.session_state.end_year_input, month=st.session_state.end_month_input, day=1) + pd.offsets.MonthEnd(0)
+
             if not all_uploaded_files:
                 st.warning("Mohon unggah setidaknya satu file NetCDF untuk memulai pemrosesan.")
             elif not st.session_state.selected_columns:
                 st.warning("Mohon pilih setidaknya satu kolom untuk diproses.")
-            elif st.session_state.start_year_input > st.session_state.end_year_input:
-                st.error("Tahun mulai tidak valid. Mohon periksa kembali.")
+            elif start_date_val > end_date_val: # Check against the full end of month date
+                st.error("Tanggal mulai tidak valid. Mohon periksa kembali.")
             else:
-                years_to_process = list(range(st.session_state.start_year_input, st.session_state.end_year_input + 1))
-                st.info(f"Memproses data untuk tahun: **{', '.join(map(str, years_to_process))}** "
+                st.info(f"Memproses data dari **{start_date_val.strftime('%B %Y')}** hingga **{pd.Timestamp(year=st.session_state.end_year_input, month=st.session_state.end_month_input, day=1).strftime('%B %Y')}** " # Display actual end month/year
                         f"dan kolom yang dipilih: **{', '.join(st.session_state.selected_columns)}**")
 
                 single_level_contents = [BytesIO(f.getvalue()) for f in uploaded_single_level_files]
@@ -364,79 +417,107 @@ if st.session_state.checked_data_available:
                 df_single_level = pd.DataFrame()
                 df_pressure_level = pd.DataFrame()
 
+                # --- Inisialisasi wadah log untuk semua pesan ---
+                st.subheader("Log Analisis Missing Values")
+                missing_analysis_log_placeholder = st.empty()
+                missing_analysis_logs = []
+
+                st.subheader("Log Imputasi")
+                imputation_log_placeholder = st.empty()
+                imputation_logs = []
+
+
                 with st.spinner("Memproses data Tingkat Tunggal (Single Level)..."):
-                    df_single_level = process_netcdf_data(single_level_contents, is_pressure_level=False, years=years_to_process, selected_columns=st.session_state.selected_columns)
+                    # Pass the full start_datetime and end_datetime to process_netcdf_data
+                    df_single_level = process_netcdf_data(single_level_contents, is_pressure_level=False, start_datetime=start_date_val, end_datetime=end_date_val, selected_columns=st.session_state.selected_columns)
                     if not df_single_level.empty:
-                        st.subheader("Analisis Missing Values (Single Level Data - Sebelum Imputasi):")
-                        st.markdown(check_missing_values(df_single_level, "Single Level Data"))
+                        missing_analysis_logs.append("--- Analisis Missing Values (Single Level Data - Sebelum Imputasi):")
+                        missing_analysis_logs.append(check_missing_values(df_single_level, "Single Level Data"))
                         detailed_nan_single = get_detailed_nan_info(df_single_level, "Single Level Data -")
                         if detailed_nan_single:
-                            for detail in detailed_nan_single:
-                                st.markdown(f"- {detail}")
+                            missing_analysis_logs.extend([f"- {detail}" for detail in detailed_nan_single])
                         else:
-                            st.info("Tidak ada nilai yang hilang di Single Level Data (per bulan).")
+                            missing_analysis_logs.append("Tidak ada nilai yang hilang di Single Level Data (per bulan).")
 
 
                 with st.spinner("Memproses data Tingkat Tekanan (Pressure Level)..."):
-                    df_pressure_level = process_netcdf_data(pressure_level_contents, is_pressure_level=True, years=years_to_process, selected_columns=st.session_state.selected_columns)
+                    # Pass the full start_datetime and end_datetime to process_netcdf_data
+                    df_pressure_level = process_netcdf_data(pressure_level_contents, is_pressure_level=True, start_datetime=start_date_val, end_datetime=end_date_val, selected_columns=st.session_state.selected_columns)
                     if not df_pressure_level.empty:
-                        st.subheader("Analisis Missing Values (Pressure Level Data - Sebelum Imputasi):")
-                        st.markdown(check_missing_values(df_pressure_level, "Pressure Level Data"))
+                        missing_analysis_logs.append("--- Analisis Missing Values (Pressure Level Data - Sebelum Imputasi):")
+                        missing_analysis_logs.append(check_missing_values(df_pressure_level, "Pressure Level Data"))
                         detailed_nan_pressure = get_detailed_nan_info(df_pressure_level, "Pressure Level Data -")
                         if detailed_nan_pressure:
-                            for detail in detailed_nan_pressure:
-                                st.markdown(f"- {detail}")
+                            missing_analysis_logs.extend([f"- {detail}" for detail in detailed_nan_pressure])
                         else:
-                            st.info("Tidak ada nilai yang hilang di Pressure Level Data (per bulan).")
+                            missing_analysis_logs.append("Tidak ada nilai yang hilang di Pressure Level Data (per bulan).")
 
                 if not df_single_level.empty or not df_pressure_level.empty:
-                    st.subheader("Menggabungkan dan Memproses Data...")
+                    imputation_logs.append("--- Menggabungkan dan Memproses Data...")
                     
                     combined_df = pd.DataFrame()
                     if not df_single_level.empty and not df_pressure_level.empty:
-                        # Gunakan 'outer' merge untuk mempertahankan semua titik data, lalu interpolasi NaN
                         combined_df = pd.merge(df_single_level, df_pressure_level, on=["latitude", "longitude", "valid_time"], how="outer")
                     elif not df_single_level.empty:
                         combined_df = df_single_level
                     elif not df_pressure_level.empty:
                         combined_df = df_pressure_level
                     else:
-                        st.warning("Tidak ada data yang tersedia untuk digabungkan setelah pemrosesan awal.")
+                        imputation_logs.append("⚠️ Tidak ada data yang tersedia untuk digabungkan setelah pemrosesan awal.")
+                        # Tampilkan log yang sudah terkumpul sebelum stop
+                        missing_analysis_log_placeholder.text_area("Log Analisis Missing Values", value="\n".join(missing_analysis_logs), height=300)
+                        imputation_log_placeholder.text_area("Log Imputasi", value="\n".join(imputation_logs), height=300)
                         st.stop()
 
                     if combined_df.empty:
-                        st.error("DataFrame gabungan kosong setelah merge. Periksa kembali file yang diunggah atau rentang tahun.")
+                        imputation_logs.append("❌ DataFrame gabungan kosong setelah merge. Periksa kembali file yang diunggah atau rentang tahun.")
+                        # Tampilkan log yang sudah terkumpul sebelum stop
+                        missing_analysis_log_placeholder.text_area("Log Analisis Missing Values", value="\n".join(missing_analysis_logs), height=300)
+                        imputation_log_placeholder.text_area("Log Imputasi", value="\n".join(imputation_logs), height=300)
                         st.stop()
+                    
+                    # Apply the month-year filter *again* after merging,
+                    # just in case some data from outside the range was brought in by outer merge,
+                    # or if the initial xarray.sel was too broad due to time steps.
+                    combined_df = combined_df[(combined_df['valid_time'] >= start_date_val) & 
+                                              (combined_df['valid_time'] <= end_date_val)] # Use the `end_date_val` which now includes `MonthEnd(0)`
 
                     # --- Imputasi NaN ---
-                    st.subheader("Melakukan Imputasi (Mengisi) Nilai yang Hilang...")
-                    # Urutkan berdasarkan waktu dan lokasi sebelum interpolasi untuk hasil terbaik
+                    imputation_logs.append("--- Melakukan Imputasi (Mengisi) Nilai yang Hilang...")
                     combined_df = combined_df.sort_values(by=['valid_time', 'latitude', 'longitude']).reset_index(drop=True)
                     
-                    # Identifikasi kolom numerik untuk interpolasi di antara yang dipilih
                     cols_to_interpolate = [col for col in st.session_state.selected_columns if col in combined_df.columns and pd.api.types.is_numeric_dtype(combined_df[col])]
                     
                     if combined_df[cols_to_interpolate].isnull().values.any():
                         combined_df[cols_to_interpolate] = combined_df[cols_to_interpolate].interpolate(method='linear', limit_direction='both', axis=0)
-                        st.success("Nilai yang hilang telah diinterpolasi.")
+                        imputation_logs.append("✅ Nilai yang hilang telah diinterpolasi.")
                     else:
-                        st.info("Tidak ada nilai yang hilang yang perlu diinterpolasi di kolom yang dipilih.")
+                        imputation_logs.append("ℹ️ Tidak ada nilai yang hilang yang perlu diinterpolasi di kolom yang dipilih.")
 
                     # --- Analisis Missing Values Setelah Imputasi ---
-                    st.subheader("Analisis Missing Values (Setelah Imputasi):")
-                    st.markdown(check_missing_values(combined_df, "Data Gabungan (Setelah Imputasi)"))
+                    # Log ini bisa tetap di log imputasi karena ini adalah hasil dari proses imputasi
+                    imputation_logs.append("--- Analisis Missing Values (Setelah Imputasi):")
+                    imputation_logs.append(check_missing_values(combined_df, "Data Gabungan (Setelah Imputasi)"))
                     detailed_nan_after_imputation = get_detailed_nan_info(combined_df, "Data Gabungan - Setelah Imputasi")
                     if detailed_nan_after_imputation:
-                        for detail in detailed_nan_after_imputation:
-                            st.markdown(f"- {detail}")
+                        imputation_logs.extend([f"- {detail}" for detail in detailed_nan_after_imputation])
                     else:
-                        st.info("Tidak ada nilai yang hilang di Data Gabungan setelah imputasi (per bulan).")
-
+                        imputation_logs.append("Tidak ada nilai yang hilang di Data Gabungan setelah imputasi (per bulan).")
 
                     # Ubah nama kolom untuk konsistensi output akhir
                     combined_df.rename(columns={"latitude": "lat", "longitude": "lon"}, inplace=True)
 
                     # Kelompokkan berdasarkan tahun dan bulan untuk file Excel bulanan
+                    combined_df['year'] = combined_df['valid_time'].dt.year
+                    combined_df['month'] = combined_df['valid_time'].dt.month
+                    
+                    # Corrected logic to filter for specific (year, month) tuples
+                    # Create a list of (year, month) tuples from the desired date range
+                    desired_year_month_tuples = [(d.year, d.month) for d in pd.date_range(start=start_date_val.to_period('M').start_time, end=end_date_val.to_period('M').end_time, freq='MS')]
+
+                    # Filter combined_df based on these (year, month) tuples
+                    combined_df = combined_df[combined_df.set_index(['year', 'month']).index.isin(desired_year_month_tuples)]
+
                     grouped = combined_df.groupby([combined_df['valid_time'].dt.year, combined_df['valid_time'].dt.month])
 
                     output_zip = BytesIO()
@@ -445,34 +526,39 @@ if st.session_state.checked_data_available:
                         total_groups = len(grouped)
                         
                         if total_groups == 0:
-                            st.warning("Tidak ada data yang tersedia untuk diekspor setelah pengelompokan berdasarkan tahun/bulan. Ini mungkin terjadi jika rentang tahun yang dipilih tidak memiliki data.")
+                            imputation_logs.append("⚠️ Tidak ada data yang tersedia untuk diekspor setelah pengelompokan berdasarkan tahun/bulan. Ini mungkin terjadi jika rentang tahun yang dipilih tidak memiliki data.")
+                            # Tampilkan log yang sudah terkumpul sebelum stop
+                            missing_analysis_log_placeholder.text_area("Log Analisis Missing Values", value="\n".join(missing_analysis_logs), height=300)
+                            imputation_log_placeholder.text_area("Log Imputasi", value="\n".join(imputation_logs), height=300)
                             st.stop()
 
                         for i, ((year, month), data) in enumerate(grouped):
-                            st.write(f"Mengekspor data untuk **{year}-{month:02d}**...")
+                            # No need for this check anymore, as `combined_df` is already filtered
+                            # current_month_date = pd.Timestamp(year=year, month=month, day=1)
+                            # if not (start_date_val <= current_month_date <= end_date_val + pd.offsets.MonthEnd(0)):
+                            #     imputation_logs.append(f"Melewatkan bulan {year}-{month:02d} karena di luar rentang pilihan kustom.")
+                            #     progress_bar.progress((i + 1) / total_groups)
+                            #     continue
+
+                            imputation_logs.append(f"Mengekspor data untuk **{year}-{month:02d}**...")
                             
                             data_to_save = data.copy() # Operasikan pada salinan
                             
-                            # Kolom yang akan disimpan untuk Excel akhir, sebelum agregasi terakhir berdasarkan lat/lon
-                            # Ini adalah lat, lon, dan semua kolom data yang dipilih pengguna (yang sudah difilter di process_netcdf_data)
                             cols_for_final_excel = ['lat', 'lon'] + st.session_state.selected_columns
                             
-                            # Filter data_to_save untuk memastikan hanya kolom yang ada yang disimpan untuk agregasi
                             actual_cols_for_final_excel = [col for col in cols_for_final_excel if col in data_to_save.columns]
                             data_to_save = data_to_save[actual_cols_for_final_excel]
 
-                            # Identifikasi kolom numerik untuk agregasi (kecualikan lat, lon)
                             numeric_cols_to_agg = [col for col in data_to_save.columns if col not in ['lat', 'lon'] and pd.api.types.is_numeric_dtype(data_to_save[col])]
                             
                             if numeric_cols_to_agg:
-                                # Lakukan agregasi rata-rata berdasarkan lat/lon untuk kolom data numerik
                                 data_to_save = data_to_save.groupby(['lat', 'lon'])[numeric_cols_to_agg].mean().reset_index()
                             else:
-                                st.warning(f"Tidak ada kolom numerik yang dipilih atau ditemukan untuk dirata-ratakan pada {year}-{month:02d}. Melewatkan ekspor untuk bulan ini.")
+                                imputation_logs.append(f"⚠️ Tidak ada kolom numerik yang dipilih atau ditemukan untuk dirata-ratakan pada {year}-{month:02d}. Melewatkan ekspor untuk bulan ini.")
+                                progress_bar.progress((i + 1) / total_groups)
                                 continue
                             
-                            # Periksa nilai yang hilang SETELAH agregasi (seharusnya minimal jika interpolasi efektif)
-                            st.markdown(check_missing_values(data_to_save, f"Data Terproses untuk {year}-{month:02d}", year, month))
+                            imputation_logs.append(check_missing_values(data_to_save, f"Data Terproses untuk {year}-{month:02d}", year, month))
 
                             output_file_name = f"era5jawa_{year}_{month:02d}.xlsx"
                             excel_buffer = BytesIO()
@@ -488,11 +574,15 @@ if st.session_state.checked_data_available:
                     st.download_button(
                         label="📥 Unduh Semua File Excel (ZIP)",
                         data=output_zip.getvalue(),
-                        file_name=f"era5_data_output_{st.session_state.start_year_input}-{st.session_state.end_year_input}.zip",
+                        file_name=f"era5_data_output_{pd.Timestamp(year=st.session_state.start_year_input, month=st.session_state.start_month_input, day=1).year}-{pd.Timestamp(year=st.session_state.start_year_input, month=st.session_state.start_month_input, day=1).month:02d}_to_{pd.Timestamp(year=st.session_state.end_year_input, month=st.session_state.end_month_input, day=1).year}-{pd.Timestamp(year=st.session_state.end_year_input, month=st.session_state.end_month_input, day=1).month:02d}.zip",
                         mime="application/zip"
                     )
                 else:
-                    st.warning("Tidak ada data yang berhasil diproses. Pastikan file yang diunggah valid dan sesuai dengan tahun yang dipilih.")
+                    st.warning("Tidak ada data yang berhasil diproses. Pastikan file yang diunggah valid dan sesuai dengan rentang waktu yang dipilih.")
+                
+                # --- Update log setelah semua pemrosesan selesai ---
+                missing_analysis_log_placeholder.text_area("Log Analisis Missing Values", value="\n".join(missing_analysis_logs), height=300)
+                imputation_log_placeholder.text_area("Log Imputasi", value="\n".join(imputation_logs), height=300)
 
 st.markdown("---")
-st.markdown("Dibuat dengan ❤️ oleh tsaqib v9")
+st.markdown("Dibuat dengan ❤️ oleh tsaqib v15")
