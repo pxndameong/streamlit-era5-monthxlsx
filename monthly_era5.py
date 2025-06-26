@@ -203,12 +203,12 @@ def process_netcdf_data(uploaded_file_contents, is_pressure_level, start_datetim
 
 st.set_page_config(page_title="ERA5 Data Processor", layout="wide")
 
-st.title("ERA5 Data Processor (NetCDF ke Excel)")
+st.title("ERA5 Data Processor Monthly (NetCDF to Excel)")
 
 st.markdown("""
 ### Tentang Aplikasi
 
-- Aplikasi ini memungkinkan Anda mengunggah file **NetCDF (data ERA5)**.
+- Aplikasi ini memungkinkan anda mengunggah file **NetCDF (data ERA5)** dengan resolusi bulanan.
 - File yang diunggah akan diproses dan dapat diunduh dalam format **Excel (.xlsx)** per bulan.
 - Aplikasi ini akan **mengisi (interpolasi) nilai yang hilang (NaN)** secara otomatis.
 - File NetCDF yang digunakan sebaiknya berasal dari situs resmi Copernicus berikut:
@@ -219,6 +219,8 @@ st.markdown("""
 st.markdown("---")
 
 st.markdown("""
+### Upload File
+
 - Anda dapat mengunggah **lebih dari satu file NetCDF** sekaligus.  
 - **Pastikan semua file memiliki waktu dan lokasi (grid) yang sama**.  
 - Jika berbeda, **harap unggah dan proses secara terpisah** untuk menghindari kesalahan.
