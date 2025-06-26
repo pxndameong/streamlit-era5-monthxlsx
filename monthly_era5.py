@@ -203,15 +203,26 @@ def process_netcdf_data(uploaded_file_contents, is_pressure_level, start_datetim
 
 st.set_page_config(page_title="ERA5 Data Processor", layout="wide")
 
-st.title("🌍 ERA5 Data Processor (NetCDF ke Excel)")
+st.title("ERA5 Data Processor (NetCDF ke Excel)")
 
 st.markdown("""
-Aplikasi ini memungkinkan Anda mengunggah file NetCDF (data ERA5),
-memprosesnya, dan mengunduh hasilnya dalam format Excel (.xlsx) per bulan.
-Aplikasi ini akan **mengisi (interpolasi) nilai yang hilang (NaN)**.
+### Tentang Aplikasi
+
+- Aplikasi ini memungkinkan Anda mengunggah file **NetCDF (data ERA5)**.
+- File yang diunggah akan diproses dan dapat diunduh dalam format **Excel (.xlsx)** per bulan.
+- Aplikasi ini akan **mengisi (interpolasi) nilai yang hilang (NaN)** secara otomatis.
+- File NetCDF yang digunakan sebaiknya berasal dari situs resmi Copernicus berikut:
+  - 🌍 ERA5 Single Levels Monthly Means: https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-monthly-means?tab=download
+  - 🌐 ERA5 Pressure Levels Monthly Means: https://cds.climate.copernicus.eu/datasets/reanalysis-era5-pressure-levels-monthly-means?tab=download
 """)
 
 st.markdown("---")
+
+st.markdown("""
+- Anda dapat mengunggah **lebih dari satu file NetCDF** sekaligus.  
+- **Pastikan semua file memiliki waktu dan lokasi (grid) yang sama**.  
+- Jika berbeda, **harap unggah dan proses secara terpisah** untuk menghindari kesalahan.
+""")
 
 ## 📥 Unggah File NetCDF
 
@@ -266,7 +277,7 @@ all_uploaded_files = uploaded_single_level_files + uploaded_pressure_level_files
 
 # --- Tombol "Cek Dulu" ---
 if all_uploaded_files:
-    if st.button("Cek Dulu Data", key="check_data_button"):
+    if st.button("Cek Data", key="check_data_button"):
         with st.spinner("Menganalisis file untuk menentukan rentang waktu dan kolom..."):
             min_overall_time = None
             max_overall_time = None
@@ -306,7 +317,7 @@ if all_uploaded_files:
                 st.session_state.end_month_input = st.session_state.detected_max_month
 
                 st.session_state.checked_data_available = True
-                st.success("Analisis data awal selesai! Silakan sesuaikan pengaturan dan klik 'Diproses Data'.")
+                st.success("Analisis data awal selesai! Silakan sesuaikan pengaturan dan klik 'Proses Data'.")
                 st.rerun() # Jalankan ulang untuk menampilkan elemen UI berikutnya segera
             else:
                 st.warning("Tidak dapat menentukan rentang waktu atau kolom dari file yang diunggah. Pastikan file valid dan memiliki variabel 'valid_time'.")
@@ -394,8 +405,8 @@ if st.session_state.checked_data_available:
 
         st.markdown("---")
         
-        # --- Tombol "Diproses Data" ---
-        if st.button("Diproses Data", key="process_data_button"):
+        # --- Tombol "Proses Data" ---
+        if st.button("Proses Data", key="process_data_button"):
             # Re-validate dates before processing
             start_date_val = pd.Timestamp(year=st.session_state.start_year_input, month=st.session_state.start_month_input, day=1)
             # Ensure end_date_val represents the last day of the selected end month
