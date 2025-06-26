@@ -221,8 +221,7 @@ st.markdown("---")
 st.markdown("""
 ### Upload File
 
-- Anda dapat mengunggah **lebih dari satu file NetCDF** sekaligus.  
-- <span style="color:cyan">**Pastikan semua file memiliki waktu dan lokasi (grid) yang sama**.  
+- Anda dapat mengunggah **lebih dari satu file NetCDF** sekaligus jika file memiliki WAKTU dan LOKASI (grid) yang sama**.  
 - Jika berbeda, **harap unggah dan proses secara terpisah** untuk menghindari kesalahan.
 """, unsafe_allow_html=True)
 
