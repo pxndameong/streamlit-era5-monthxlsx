@@ -1,0 +1,9 @@
+# .streamlit/config.toml
+
+[theme]
+base="dark"
+primaryColor="#909090" # A medium grey for primary elements
+backgroundColor="#333333" # Dark grey for the background
+secondaryBackgroundColor="#555555" # Slightly lighter grey for secondary backgrounds
+textColor="#FFFFFF" # White text for contrast
+font="sans serif"
