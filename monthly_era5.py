@@ -597,4 +597,4 @@ if st.session_state.checked_data_available:
                 imputation_log_placeholder.text_area("Log Imputasi", value="\n".join(imputation_logs), height=300)
 
 st.markdown("---")
-st.markdown("Dibuat Tsaqib dan Tim")
+st.markdown("Dibuat Tsaqib dan Tim A")
