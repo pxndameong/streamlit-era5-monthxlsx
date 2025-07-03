@@ -153,6 +153,7 @@ def process_netcdf_data(uploaded_file_contents, is_pressure_level, start_datetim
                 # Filter by selected latitude and longitude if provided
                 if selected_latitude is not None and selected_longitude is not None:
                     # Find the nearest latitude and longitude in the dataset
+                    # Use a tolerance for floating point comparisons if needed, or method='nearest'
                     ds = ds.sel(latitude=selected_latitude, longitude=selected_longitude, method='nearest')
                     st.info(f"Data akan difilter untuk lokasi terdekat: Lat {selected_latitude:.2f}, Lon {selected_longitude:.2f}")
 
@@ -287,9 +288,11 @@ if 'start_month_input' not in st.session_state:
     st.session_state.start_month_input = None
 if 'end_month_input' not in st.session_state:
     st.session_state.end_month_input = None
-if 'selected_lat' not in st.session_state:
+
+# Pastikan nilai lat/lon default selalu berupa float
+if 'selected_lat' not in st.session_state or not isinstance(st.session_state.selected_lat, float):
     st.session_state.selected_lat = -7.28
-if 'selected_lon' not in st.session_state:
+if 'selected_lon' not in st.session_state or not isinstance(st.session_state.selected_lon, float):
     st.session_state.selected_lon = 112.77
 
 
@@ -430,7 +433,10 @@ if st.session_state.checked_data_available:
     st.info("Klik pada peta untuk memilih lokasi. Lintang dan Bujur akan otomatis terisi.")
 
     # Inisialisasi peta Folium
-    m = folium.Map(location=[-7.28, 112.77], zoom_start=7) # Pusat di Surabaya
+    # Pastikan lat/lon adalah float untuk folium
+    initial_lat = float(st.session_state.selected_lat)
+    initial_lon = float(st.session_state.selected_lon)
+    m = folium.Map(location=[initial_lat, initial_lon], zoom_start=7) # Pusat di Surabaya
 
     # Tambahkan marker jika sudah ada lat/lon terpilih
     if st.session_state.selected_lat is not None and st.session_state.selected_lon is not None:
@@ -441,18 +447,32 @@ if st.session_state.checked_data_available:
 
     # Tampilkan peta dan dapatkan klik terakhir
     st.markdown("Peta Interaktif:")
-    map_data = st_folium(m, width=700, height=300, key="folium_map",
-                         return_on_hover=False,
-                         return_on_drag_end=False,
-                         return_on_zoom_end=False,
-                         )
+    # Gunakan key yang dinamis jika perlu, atau pastikan 'folium_map' unik per sesi
+    # Coba tambahkan `key=f"folium_map_{st.session_state.selected_lat}_{st.session_state.selected_lon}"`
+    # jika ada masalah dengan re-rendering peta
+    map_data = st_folium(
+        m,
+        width=700,
+        height=300,
+        key="folium_map", # Tetap menggunakan key statis kecuali ada masalah lain
+        return_on_hover=False,
+        return_on_drag_end=False,
+        return_on_zoom_end=False,
+    )
 
     # Perbarui session state jika ada klik di peta
-    if map_data and map_data.get("last_clicked"):
-        st.session_state.selected_lat = map_data["last_clicked"]["lat"]
-        st.session_state.selected_lon = map_data["last_clicked"]["lng"]
-        st.success(f"Lokasi terpilih dari peta: Lintang **{st.session_state.selected_lat:.2f}**, Bujur **{st.session_state.selected_lon:.2f}**")
-    
+    # Tambahkan pemeriksaan bahwa map_data tidak None dan 'last_clicked' ada
+    if map_data and "last_clicked" in map_data and map_data["last_clicked"] is not None:
+        new_lat = map_data["last_clicked"]["lat"]
+        new_lon = map_data["last_clicked"]["lng"]
+        # Perbarui hanya jika ada perubahan signifikan
+        if abs(new_lat - st.session_state.selected_lat) > 0.01 or abs(new_lon - st.session_state.selected_lon) > 0.01:
+            st.session_state.selected_lat = new_lat
+            st.session_state.selected_lon = new_lon
+            st.success(f"Lokasi terpilih dari peta: Lintang **{st.session_state.selected_lat:.2f}**, Bujur **{st.session_state.selected_lon:.2f}**")
+            # st.experimental_rerun() # Tidak perlu rerun manual, streamlit akan re-run otomatis saat session state berubah
+
+
     # Input manual untuk Lat/Lon
     col_lat, col_lon = st.columns(2)
     with col_lat:
@@ -473,7 +493,7 @@ if st.session_state.checked_data_available:
             format="%.2f",
             key="lon_input"
         )
-    
+
     st.markdown("---")
 
     # --- Tombol "Proses Data" ---
