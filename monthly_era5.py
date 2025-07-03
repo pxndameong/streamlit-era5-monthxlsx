@@ -572,7 +572,7 @@ if st.session_state.checked_data_available:
                             
                             imputation_logs.append(check_missing_values(data_to_save, f"Data Terproses untuk {year}-{month:02d}", year, month))
 
-                            output_file_name = f"era5jawa_{year}_{month:02d}.xlsx"
+                            output_file_name = f"era5process_{year}_{month:02d}.xlsx"
                             excel_buffer = BytesIO()
                             data_to_save.to_excel(excel_buffer, index=False)
                             excel_buffer.seek(0) 
