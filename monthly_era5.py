@@ -153,10 +153,8 @@ def process_netcdf_data(uploaded_file_contents, is_pressure_level, start_datetim
                 # Filter by selected latitude and longitude if provided
                 if selected_latitude is not None and selected_longitude is not None:
                     # Find the nearest latitude and longitude in the dataset
-                    # Use a tolerance for floating point comparisons if needed, or method='nearest'
                     ds = ds.sel(latitude=selected_latitude, longitude=selected_longitude, method='nearest')
-                    st.info(f"Data akan difilter untuk lokasi terdekat: Lat {selected_latitude:.2f}, Lon {selected_longitude:.2f}")
-
+                    # st.info(f"Data akan difilter untuk lokasi terdekat: Lat {selected_latitude:.2f}, Lon {selected_longitude:.2f}") # Moved to main UI
 
                 ds = ds.drop_vars(["expver", "number"], errors="ignore")
 
@@ -289,7 +287,7 @@ if 'start_month_input' not in st.session_state:
 if 'end_month_input' not in st.session_state:
     st.session_state.end_month_input = None
 
-# Pastikan nilai lat/lon default selalu berupa float
+# Pastikan nilai lat/lon default selalu berupa float dan ada di session state
 if 'selected_lat' not in st.session_state or not isinstance(st.session_state.selected_lat, float):
     st.session_state.selected_lat = -7.28
 if 'selected_lon' not in st.session_state or not isinstance(st.session_state.selected_lon, float):
@@ -372,7 +370,7 @@ if st.session_state.checked_data_available:
                     "Bulan",
                     min_value=1,
                     max_value=12,
-                    value=st.session_state.detected_min_month if st.session_state.start_month_input is None else st.session_state.start_month_input,
+                    value=st.session_state.get('start_month_input', st.session_state.detected_min_month),
                     step=1,
                     key="start_month_selector"
                 )
@@ -381,7 +379,7 @@ if st.session_state.checked_data_available:
                     "Tahun",
                     min_value=1940,
                     max_value=current_year,
-                    value=st.session_state.detected_min_year if st.session_state.start_year_input is None else st.session_state.start_year_input,
+                    value=st.session_state.get('start_year_input', st.session_state.detected_min_year),
                     step=1,
                     key="start_year_selector"
                 )
@@ -396,7 +394,7 @@ if st.session_state.checked_data_available:
                     "Bulan",
                     min_value=1,
                     max_value=12,
-                    value=st.session_state.detected_max_month if st.session_state.end_month_input is None else st.session_state.end_month_input,
+                    value=st.session_state.get('end_month_input', st.session_state.detected_max_month),
                     step=1,
                     key="end_month_selector"
                 )
@@ -405,7 +403,7 @@ if st.session_state.checked_data_available:
                     "Tahun",
                     min_value=1940,
                     max_value=current_year,
-                    value=st.session_state.detected_max_year if st.session_state.end_year_input is None else st.session_state.end_year_input,
+                    value=st.session_state.get('end_year_input', st.session_state.detected_max_year),
                     step=1,
                     key="end_year_selector"
                 )
@@ -433,10 +431,10 @@ if st.session_state.checked_data_available:
     st.info("Klik pada peta untuk memilih lokasi. Lintang dan Bujur akan otomatis terisi.")
 
     # Inisialisasi peta Folium
-    # Pastikan lat/lon adalah float untuk folium
-    initial_lat = float(st.session_state.selected_lat)
-    initial_lon = float(st.session_state.selected_lon)
-    m = folium.Map(location=[initial_lat, initial_lon], zoom_start=7) # Pusat di Surabaya
+    # Pastikan lat/lon adalah float untuk folium.Map. Gunakan .get() untuk keamanan.
+    current_lat = float(st.session_state.get('selected_lat', -7.28))
+    current_lon = float(st.session_state.get('selected_lon', 112.77))
+    m = folium.Map(location=[current_lat, current_lon], zoom_start=7)
 
     # Tambahkan marker jika sudah ada lat/lon terpilih
     if st.session_state.selected_lat is not None and st.session_state.selected_lon is not None:
@@ -447,51 +445,67 @@ if st.session_state.checked_data_available:
 
     # Tampilkan peta dan dapatkan klik terakhir
     st.markdown("Peta Interaktif:")
-    # Gunakan key yang dinamis jika perlu, atau pastikan 'folium_map' unik per sesi
-    # Coba tambahkan `key=f"folium_map_{st.session_state.selected_lat}_{st.session_state.selected_lon}"`
-    # jika ada masalah dengan re-rendering peta
-    map_data = st_folium(
-        m,
-        width=700,
-        height=300,
-        key="folium_map", # Tetap menggunakan key statis kecuali ada masalah lain
-        return_on_hover=False,
-        return_on_drag_end=False,
-        return_on_zoom_end=False,
-    )
+    try:
+        # Gunakan key yang konsisten. st_folium bisa re-render jika state terkait berubah.
+        # Jika key statis masih bermasalah, pertimbangkan key dinamis
+        # seperti key=f"folium_map_{st.session_state.selected_lat}_{st.session_state.selected_lon}"
+        # TAPI ini bisa memicu terlalu banyak re-render. Key statis biasanya lebih stabil.
+        map_data = st_folium(
+            m,
+            width=700,
+            height=300,
+            key="folium_map_widget", # Gunakan key yang unik dan stabil
+            return_on_hover=False,
+            return_on_drag_end=False,
+            return_on_zoom_end=False,
+            # Perhatikan: `return_last_object` di set True secara default di st_folium
+            # Ini yang memastikan `map_data` berisi objek yang dikembalikan.
+        )
 
-    # Perbarui session state jika ada klik di peta
-    # Tambahkan pemeriksaan bahwa map_data tidak None dan 'last_clicked' ada
-    if map_data and "last_clicked" in map_data and map_data["last_clicked"] is not None:
-        new_lat = map_data["last_clicked"]["lat"]
-        new_lon = map_data["last_clicked"]["lng"]
-        # Perbarui hanya jika ada perubahan signifikan
-        if abs(new_lat - st.session_state.selected_lat) > 0.01 or abs(new_lon - st.session_state.selected_lon) > 0.01:
-            st.session_state.selected_lat = new_lat
-            st.session_state.selected_lon = new_lon
-            st.success(f"Lokasi terpilih dari peta: Lintang **{st.session_state.selected_lat:.2f}**, Bujur **{st.session_state.selected_lon:.2f}**")
-            # st.experimental_rerun() # Tidak perlu rerun manual, streamlit akan re-run otomatis saat session state berubah
-
+        # Perbarui session state jika ada klik di peta
+        # Tambahkan pemeriksaan bahwa map_data tidak None dan 'last_clicked' ada
+        if map_data and isinstance(map_data, dict) and "last_clicked" in map_data and map_data["last_clicked"] is not None:
+            new_lat = map_data["last_clicked"]["lat"]
+            new_lon = map_data["last_clicked"]["lng"]
+            # Perbarui hanya jika ada perubahan signifikan untuk menghindari loop re-render
+            if abs(new_lat - st.session_state.selected_lat) > 0.001 or abs(new_lon - st.session_state.selected_lon) > 0.001:
+                st.session_state.selected_lat = new_lat
+                st.session_state.selected_lon = new_lon
+                st.success(f"Lokasi terpilih dari peta: Lintang **{st.session_state.selected_lat:.2f}**, Bujur **{st.session_state.selected_lon:.2f}**")
+                st.experimental_rerun() # Peta mungkin butuh rerender untuk update marker dengan cepat
+    except Exception as e:
+        st.error(f"Terjadi kesalahan saat menampilkan peta: {e}")
+        st.warning("Pastikan Anda memiliki koneksi internet untuk memuat peta.")
+        st.info("Anda masih bisa memasukkan lintang dan bujur secara manual di bawah.")
 
     # Input manual untuk Lat/Lon
     col_lat, col_lon = st.columns(2)
     with col_lat:
-        st.session_state.selected_lat = st.number_input(
+        # Gunakan on_change untuk menangani perubahan input manual
+        def update_lat_from_input():
+            st.session_state.selected_lat = st.session_state.lat_input_manual
+
+        st.number_input(
             "Lintang (Latitude)",
             min_value=-90.0,
             max_value=90.0,
             value=st.session_state.selected_lat,
             format="%.2f",
-            key="lat_input"
+            key="lat_input_manual", # Key yang berbeda dari sebelumnya
+            on_change=update_lat_from_input
         )
     with col_lon:
-        st.session_state.selected_lon = st.number_input(
+        def update_lon_from_input():
+            st.session_state.selected_lon = st.session_state.lon_input_manual
+
+        st.number_input(
             "Bujur (Longitude)",
             min_value=-180.0,
             max_value=180.0,
             value=st.session_state.selected_lon,
             format="%.2f",
-            key="lon_input"
+            key="lon_input_manual", # Key yang berbeda dari sebelumnya
+            on_change=update_lon_from_input
         )
 
     st.markdown("---")
