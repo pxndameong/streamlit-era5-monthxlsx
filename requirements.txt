@@ -4,3 +4,5 @@ netCDF4
 h5netcdf
 streamlit
 openpyxl
+streamlit_folium
+folium
