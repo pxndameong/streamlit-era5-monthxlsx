@@ -208,8 +208,8 @@ st.title("ERA5 Data Processor Monthly (NetCDF to Excel)")
 st.markdown("""
 ### Tentang Aplikasi
 
-- Aplikasi ini memungkinkan anda mengunggah file **NetCDF (data ERA5)** dengan resolusi bulanan.
-- File yang diunggah akan diproses dan dapat diunduh dalam format **Excel (.xlsx)** per bulan.
+- Aplikasi ini memungkinkan Anda mengunggah file **NetCDF (data ERA5)** dengan resolusi bulanan.
+- File yang diunggah akan diproses dan dapat diunduh dalam format **Excel (.xlsx)**.
 - <span style="color:cyan">Aplikasi ini akan **mengisi (interpolasi) nilai yang hilang (NaN)** secara otomatis.
 - File NetCDF yang digunakan sebaiknya berasal dari situs resmi Copernicus berikut:
   - 🌍 ERA5 Single Levels Monthly Means: https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-monthly-means?tab=download
@@ -219,7 +219,7 @@ st.markdown("""
 st.markdown("---")
 
 st.markdown("""
-### Upload File
+### Unggah File
 
 - <span style="color:cyan">Anda dapat mengunggah **lebih dari satu file NetCDF** sekaligus jika file memiliki WAKTU dan LOKASI (grid) yang sama.  
 - Jika berbeda, **harap unggah dan proses secara terpisah** untuk menghindari kesalahan.
@@ -270,8 +270,12 @@ if 'end_year_input' not in st.session_state:
     st.session_state.end_year_input = None
 if 'start_month_input' not in st.session_state: 
     st.session_state.start_month_input = None
-if 'end_month_input' not in st.session_state:   
+if 'end_month_input' not in st.session_state:  
     st.session_state.end_month_input = None
+if 'date_format_option' not in st.session_state: # New session state for date format
+    st.session_state.date_format_option = 'Default (YYYY-MM-DD HH:MM:SS)' # Default value
+if 'output_format_option' not in st.session_state: # New session state for output format
+    st.session_state.output_format_option = '1 file per Bulan' # Default value
 
 
 all_uploaded_files = uploaded_single_level_files + uploaded_pressure_level_files
@@ -286,7 +290,6 @@ if all_uploaded_files:
 
             # Proses file tingkat tunggal untuk metadata
             for file_buffer in uploaded_single_level_files:
-                # Gunakan BytesIO(file_buffer.getvalue()) untuk membuat buffer baru agar cache berfungsi dengan benar
                 min_time, max_time, cols = _get_sample_df_columns(BytesIO(file_buffer.getvalue()), is_pressure_level=False)
                 if min_time and max_time:
                     if min_overall_time is None or min_time < min_overall_time:
@@ -395,6 +398,23 @@ if st.session_state.checked_data_available:
             if start_date_val > end_date_val:
                 st.error("Tanggal mulai tidak boleh lebih besar dari tanggal akhir.")
                 
+            st.markdown("---")
+            st.subheader("Opsi Format Output File")
+            st.session_state.output_format_option = st.radio(
+                "Pilih bagaimana Anda ingin mengelompokkan data dalam file Excel:",
+                ('1 file per Bulan', '1 file per Lokasi (Lat-Lon)'),
+                key="output_format_radio"
+            )
+
+            st.markdown("---")
+            st.subheader("Opsi Format Tanggal dalam File")
+            st.session_state.date_format_option = st.radio(
+                "Pilih format untuk kolom 'valid_time' di file Excel:",
+                ('Default (YYYY-MM-DD HH:MM:SS)', 'DD/MM/YYYY'),
+                key="date_format_radio"
+            )
+
+
         with col_columns:
             st.subheader("Pilih Kolom untuk Disertakan dalam Output")
             st.session_state.selected_columns = st.multiselect(
@@ -507,7 +527,6 @@ if st.session_state.checked_data_available:
                         imputation_logs.append("ℹ️ Tidak ada nilai yang hilang yang perlu diinterpolasi di kolom yang dipilih.")
 
                     # --- Analisis Missing Values Setelah Imputasi ---
-                    # Log ini bisa tetap di log imputasi karena ini adalah hasil dari proses imputasi
                     imputation_logs.append("--- Analisis Missing Values (Setelah Imputasi):")
                     imputation_logs.append(check_missing_values(combined_df, "Data Gabungan (Setelah Imputasi)"))
                     detailed_nan_after_imputation = get_detailed_nan_info(combined_df, "Data Gabungan - Setelah Imputasi")
@@ -518,77 +537,112 @@ if st.session_state.checked_data_available:
 
                     # Ubah nama kolom untuk konsistensi output akhir
                     combined_df.rename(columns={"latitude": "lat", "longitude": "lon"}, inplace=True)
-
-                    # Kelompokkan berdasarkan tahun dan bulan untuk file Excel bulanan
-                    combined_df['year'] = combined_df['valid_time'].dt.year
-                    combined_df['month'] = combined_df['valid_time'].dt.month
                     
-                    # Corrected logic to filter for specific (year, month) tuples
-                    # Create a list of (year, month) tuples from the desired date range
-                    desired_year_month_tuples = [(d.year, d.month) for d in pd.date_range(start=start_date_val.to_period('M').start_time, end=end_date_val.to_period('M').end_time, freq='MS')]
-
-                    # Filter combined_df based on these (year, month) tuples
-                    combined_df = combined_df[combined_df.set_index(['year', 'month']).index.isin(desired_year_month_tuples)]
-
-                    grouped = combined_df.groupby([combined_df['valid_time'].dt.year, combined_df['valid_time'].dt.month])
-
                     output_zip = BytesIO()
                     with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
                         progress_bar = st.progress(0)
-                        total_groups = len(grouped)
                         
-                        if total_groups == 0:
-                            imputation_logs.append("⚠️ Tidak ada data yang tersedia untuk diekspor setelah pengelompokan berdasarkan tahun/bulan. Ini mungkin terjadi jika rentang tahun yang dipilih tidak memiliki data.")
-                            # Tampilkan log yang sudah terkumpul sebelum stop
-                            missing_analysis_log_placeholder.text_area("Log Analisis Missing Values", value="\n".join(missing_analysis_logs), height=300)
-                            imputation_log_placeholder.text_area("Log Imputasi", value="\n".join(imputation_logs), height=300)
-                            st.stop()
+                        if st.session_state.output_format_option == '1 file per Bulan':
+                            imputation_logs.append("Mengelompokkan data berdasarkan Bulan (1 file per bulan)...")
+                            combined_df['year'] = combined_df['valid_time'].dt.year
+                            combined_df['month'] = combined_df['valid_time'].dt.month
+                            
+                            desired_year_month_tuples = [(d.year, d.month) for d in pd.date_range(start=start_date_val.to_period('M').start_time, end=end_date_val.to_period('M').end_time, freq='MS')]
+                            combined_df = combined_df[combined_df.set_index(['year', 'month']).index.isin(desired_year_month_tuples)]
 
-                        for i, ((year, month), data) in enumerate(grouped):
-                            # No need for this check anymore, as `combined_df` is already filtered
-                            # current_month_date = pd.Timestamp(year=year, month=month, day=1)
-                            # if not (start_date_val <= current_month_date <= end_date_val + pd.offsets.MonthEnd(0)):
-                            #     imputation_logs.append(f"Melewatkan bulan {year}-{month:02d} karena di luar rentang pilihan kustom.")
-                            #     progress_bar.progress((i + 1) / total_groups)
-                            #     continue
+                            grouped = combined_df.groupby([combined_df['valid_time'].dt.year, combined_df['valid_time'].dt.month])
+                            total_groups = len(grouped)
 
-                            imputation_logs.append(f"Mengekspor data untuk **{year}-{month:02d}**...")
-                            
-                            data_to_save = data.copy() # Operasikan pada salinan
-                            
-                            cols_for_final_excel = ['lat', 'lon'] + st.session_state.selected_columns
-                            
-                            actual_cols_for_final_excel = [col for col in cols_for_final_excel if col in data_to_save.columns]
-                            data_to_save = data_to_save[actual_cols_for_final_excel]
-
-                            numeric_cols_to_agg = [col for col in data_to_save.columns if col not in ['lat', 'lon'] and pd.api.types.is_numeric_dtype(data_to_save[col])]
-                            
-                            if numeric_cols_to_agg:
-                                data_to_save = data_to_save.groupby(['lat', 'lon'])[numeric_cols_to_agg].mean().reset_index()
+                            if total_groups == 0:
+                                imputation_logs.append("⚠️ Tidak ada data yang tersedia untuk diekspor setelah pengelompokan berdasarkan tahun/bulan.")
                             else:
-                                imputation_logs.append(f"⚠️ Tidak ada kolom numerik yang dipilih atau ditemukan untuk dirata-ratakan pada {year}-{month:02d}. Melewatkan ekspor untuk bulan ini.")
-                                progress_bar.progress((i + 1) / total_groups)
-                                continue
-                            
-                            imputation_logs.append(check_missing_values(data_to_save, f"Data Terproses untuk {year}-{month:02d}", year, month))
+                                for i, ((year, month), data) in enumerate(grouped):
+                                    imputation_logs.append(f"Mengekspor data untuk **{year}-{month:02d}**...")
+                                    
+                                    data_to_save = data.copy()
+                                    if st.session_state.date_format_option == 'DD/MM/YYYY':
+                                        data_to_save['valid_time'] = data_to_save['valid_time'].dt.strftime('%d/%m/%Y')
+                                    
+                                    cols_for_final_excel = ['lat', 'lon', 'valid_time'] + st.session_state.selected_columns
+                                    actual_cols_for_final_excel = [col for col in cols_for_final_excel if col in data_to_save.columns]
+                                    data_to_save = data_to_save[actual_cols_for_final_excel]
 
-                            output_file_name = f"era5process_{year}_{month:02d}.xlsx"
-                            excel_buffer = BytesIO()
-                            data_to_save.to_excel(excel_buffer, index=False)
-                            excel_buffer.seek(0) 
+                                    # Aggregasi rata-rata bulanan
+                                    numeric_cols_to_agg = [col for col in data_to_save.columns if col not in ['lat', 'lon', 'valid_time'] and pd.api.types.is_numeric_dtype(data_to_save[col])]
+                                    if numeric_cols_to_agg:
+                                        # Group by lat, lon, and valid_time to ensure unique combinations for monthly means
+                                        data_to_save = data_to_save.groupby(['lat', 'lon', 'valid_time'])[numeric_cols_to_agg].mean().reset_index()
+                                    else:
+                                        imputation_logs.append(f"⚠️ Tidak ada kolom numerik yang dipilih atau ditemukan untuk dirata-ratakan pada {year}-{month:02d}. Melewatkan ekspor untuk bulan ini.")
+                                        progress_bar.progress((i + 1) / total_groups)
+                                        continue
 
-                            zf.writestr(output_file_name, excel_buffer.getvalue())
-                            progress_bar.progress((i + 1) / total_groups)
-                        
+                                    imputation_logs.append(check_missing_values(data_to_save, f"Data Terproses untuk {year}-{month:02d}", year, month))
+
+                                    output_file_name = f"era5jawa_{year}_{month:02d}.xlsx"
+                                    excel_buffer = BytesIO()
+                                    data_to_save.to_excel(excel_buffer, index=False)
+                                    excel_buffer.seek(0) 
+
+                                    zf.writestr(output_file_name, excel_buffer.getvalue())
+                                    progress_bar.progress((i + 1) / total_groups)
+
+                        elif st.session_state.output_format_option == '1 file per Lokasi (Lat-Lon)':
+                            imputation_logs.append("Mengelompokkan data berdasarkan Lokasi (1 file per lat-lon)...")
+                            # Group by lat, lon first
+                            grouped = combined_df.groupby(['lat', 'lon'])
+                            total_groups = len(grouped)
+
+                            if total_groups == 0:
+                                imputation_logs.append("⚠️ Tidak ada data yang tersedia untuk diekspor setelah pengelompokan berdasarkan lat-lon.")
+                            else:
+                                for i, ((lat, lon), data) in enumerate(grouped):
+                                    imputation_logs.append(f"Mengekspor data untuk **Lat: {lat:.2f}, Lon: {lon:.2f}**...")
+                                    
+                                    data_to_save = data.copy()
+                                    
+                                    # Ensure 'valid_time' is the first column and correctly formatted
+                                    if st.session_state.date_format_option == 'DD/MM/YYYY':
+                                        data_to_save['valid_time_formatted'] = data_to_save['valid_time'].dt.strftime('%d/%m/%Y')
+                                        cols_for_final_excel = ['valid_time_formatted'] + st.session_state.selected_columns
+                                    else:
+                                        cols_for_final_excel = ['valid_time'] + st.session_state.selected_columns
+
+                                    actual_cols_for_final_excel = [col for col in cols_for_final_excel if col in data_to_save.columns]
+                                    data_to_save = data_to_save[actual_cols_for_final_excel]
+
+                                    # Rename valid_time_formatted back to valid_time if used
+                                    if 'valid_time_formatted' in data_to_save.columns:
+                                        data_to_save.rename(columns={'valid_time_formatted': 'valid_time'}, inplace=True)
+                                    
+                                    # No aggregation needed here as each row is a time series for a single lat/lon
+                                    # We just need to ensure the correct columns are selected and sorted by time
+                                    data_to_save = data_to_save.sort_values(by='valid_time').reset_index(drop=True)
+
+                                    imputation_logs.append(check_missing_values(data_to_save, f"Data Terproses untuk Lat: {lat:.2f}, Lon: {lon:.2f}"))
+
+                                    output_file_name = f"era5_lat{lat:.2f}_lon{lon:.2f}.xlsx"
+                                    excel_buffer = BytesIO()
+                                    data_to_save.to_excel(excel_buffer, index=False)
+                                    excel_buffer.seek(0) 
+
+                                    zf.writestr(output_file_name, excel_buffer.getvalue())
+                                    progress_bar.progress((i + 1) / total_groups)
+
+                        else:
+                            imputation_logs.append("Pilihan format output tidak valid. Silakan pilih '1 file per Bulan' atau '1 file per Lokasi (Lat-Lon)'.")
+
                     output_zip.seek(0)
-                    st.success("Pemrosesan selesai! File Excel siap diunduh.")
-                    
-                    st.download_button(
-                        label="📥 Unduh Semua File Excel (ZIP)",
-                        data=output_zip.getvalue(),
-                        file_name=f"era5_data_output_{pd.Timestamp(year=st.session_state.start_year_input, month=st.session_state.start_month_input, day=1).year}-{pd.Timestamp(year=st.session_state.start_year_input, month=st.session_state.start_month_input, day=1).month:02d}_to_{pd.Timestamp(year=st.session_state.end_year_input, month=st.session_state.end_month_input, day=1).year}-{pd.Timestamp(year=st.session_state.end_year_input, month=st.session_state.end_month_input, day=1).month:02d}.zip",
-                        mime="application/zip"
-                    )
+                    if total_groups > 0:
+                        st.success("Pemrosesan selesai! File Excel siap diunduh.")
+                        st.download_button(
+                            label="📥 Unduh Semua File Excel (ZIP)",
+                            data=output_zip.getvalue(),
+                            file_name=f"era5_data_output_{start_date_val.year}-{start_date_val.month:02d}_to_{end_date_val.year}-{end_date_val.month:02d}.zip",
+                            mime="application/zip"
+                        )
+                    else:
+                        st.warning("Tidak ada file Excel yang dihasilkan berdasarkan pilihan Anda.")
                 else:
                     st.warning("Tidak ada data yang berhasil diproses. Pastikan file yang diunggah valid dan sesuai dengan rentang waktu yang dipilih.")
                 
